@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>meme_bot LAB — Solanaミーム ペーパートレード</title>
+<meta name="description" content="Solanaミームコインのペーパートレードbotの成績（読み取り専用）">
+<style>
+  :root{
+    color-scheme: light;
+    --bg:#f5f4f1; --surface-1:#fcfcfb; --surface-2:#f0efec; --border:rgba(11,11,11,.10);
+    --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#7a7972;
+    --grid:#e1e0d9; --axis:#c3c2b7;
+    --live:#2a78d6; --control:#eb6834; --early:#1baf7a; --early_ctrl:#eda100;
+    --good:#006300; --good-mark:#0ca30c; --critical:#d03b3b; --warning:#fab219;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:where(:not([data-theme="light"])){
+      color-scheme: dark;
+      --bg:#121211; --surface-1:#1a1a19; --surface-2:#242422; --border:rgba(255,255,255,.10);
+      --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#8f8e85;
+      --grid:#2c2c2a; --axis:#383835;
+      --live:#3987e5; --control:#d95926; --early:#199e70; --early_ctrl:#c98500;
+      --good:#0ca30c; --good-mark:#0ca30c; --critical:#d03b3b; --warning:#fab219;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --bg:#121211; --surface-1:#1a1a19; --surface-2:#242422; --border:rgba(255,255,255,.10);
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#8f8e85;
+    --grid:#2c2c2a; --axis:#383835;
+    --live:#3987e5; --control:#d95926; --early:#199e70; --early_ctrl:#c98500;
+    --good:#0ca30c; --good-mark:#0ca30c; --critical:#d03b3b; --warning:#fab219;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text-primary);
+       font:14px/1.6 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+       -webkit-text-size-adjust:100%}
+  .wrap{max-width:940px;margin:0 auto;padding:0 14px 60px}
+  header{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 0 8px;
+         border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+  h1{font-size:16px;margin:0;letter-spacing:.01em}
+  .ro{font-size:10.5px;letter-spacing:.04em;border:1px solid var(--border);border-radius:999px;
+      padding:2px 9px;color:var(--text-secondary);background:var(--surface-2)}
+  .updated{font-size:11.5px;color:var(--text-secondary);margin-left:auto;
+           font-variant-numeric:tabular-nums;white-space:nowrap}
+  /* 狭い画面では更新時刻を次の行へ送る（1行に詰めると横スクロールが発生する） */
+  @media (max-width:560px){
+    h1{font-size:15px}
+    .updated{margin-left:0;order:3;flex-basis:100%}
+    .ghost{margin-left:auto}
+    .tiles{grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px}
+  }
+
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;
+       background:var(--good-mark)}
+  .dot.stale{background:var(--warning)}
+  nav{display:flex;gap:4px;margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  nav button{flex:0 0 auto;background:transparent;border:0;border-bottom:2px solid transparent;
+             color:var(--text-secondary);font:inherit;font-size:13px;padding:7px 12px;cursor:pointer}
+  nav button[aria-selected="true"]{color:var(--text-primary);border-bottom-color:var(--live);font-weight:600}
+  .card{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;
+        padding:14px 15px;margin-bottom:12px}
+  .banner{border-left:3px solid var(--axis)}
+  .banner.edge{border-left-color:var(--good-mark)} .banner.no_edge{border-left-color:var(--warning)}
+  .banner.harmful{border-left-color:var(--critical)}
+  .banner .headline{font-size:14.5px;font-weight:600;line-height:1.45}
+  .banner .sub{color:var(--text-secondary);font-size:12px;margin-top:4px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0 12px}
+  .tile{background:var(--surface-2);border-radius:10px;padding:10px 12px}
+  .tile .label{font-size:11px;color:var(--text-secondary)}
+  .tile .value{font-size:22px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums;
+               letter-spacing:-.01em}
+  .tile .note{font-size:10.5px;color:var(--text-muted);margin-top:2px}
+  .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+  .pos{color:var(--good)} .neg{color:var(--critical)}
+  h2{font-size:13px;margin:0 0 8px;font-weight:600}
+  .legend{display:flex;gap:14px;font-size:11.5px;color:var(--text-secondary);margin-bottom:4px;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th{text-align:right;font-weight:500;color:var(--text-secondary);font-size:11px;
+     padding:0 0 6px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:7px 0;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  .name{max-width:42vw;overflow:hidden;text-overflow:ellipsis}
+  .badge{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--surface-2);
+         font-size:10.5px;color:var(--text-secondary)}
+  .book{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+  .book.live{background:var(--live)} .book.control{background:var(--control)}
+  .book.early{background:var(--early)} .book.early_ctrl{background:var(--early_ctrl)}
+  .empty{color:var(--text-muted);font-size:12.5px;padding:10px 0}
+  .bars{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;font-size:11.5px}
+  .bar{height:8px;border-radius:4px;background:var(--axis)}
+  .scroll{overflow-x:auto}
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .ghost{background:transparent;border:1px solid var(--border);color:var(--text-secondary);
+         border-radius:7px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:inherit}
+  .tt{position:fixed;pointer-events:none;background:var(--surface-1);border:1px solid var(--border);
+      border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 6px 20px rgba(0,0,0,.18);
+      opacity:0;transition:opacity .08s;font-variant-numeric:tabular-nums;z-index:9}
+  footer{color:var(--text-muted);font-size:11px;margin-top:18px;line-height:1.8}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>🧪 meme_bot LAB</h1>
+      <span class="ro">READ-ONLY / ペーパートレード</span>
+      <span class="updated" id="updated">読み込み中…</span>
+      <button class="ghost" id="theme" type="button">◐</button>
+    </div>
+    <nav id="tabs">
+      <button data-tab="overview" aria-selected="true">概要 / 判定</button>
+      <button data-tab="positions" aria-selected="false">建玉</button>
+      <button data-tab="history" aria-selected="false">履歴</button>
+      <button data-tab="collect" aria-selected="false">収集状況</button>
+      <button data-tab="about" aria-selected="false">この実験について</button>
+    </nav>
+  </header>
+
+  <main>
+    <div id="tab-overview"></div>
+    <div id="tab-positions" hidden></div>
+    <div id="tab-history" hidden></div>
+    <div id="tab-collect" hidden></div>
+    <div id="tab-about" hidden>
+      <div class="card">
+        <h2>何をしているか</h2>
+        <p style="margin:0 0 10px">Solanaのミームコインを対象にした売買botの<b>ペーパートレード</b>の記録です。
+        実資金は一切動いていません。このbotはウォレットも秘密鍵も持たず、発注機能自体が未実装です。</p>
+        <h2>なぜ帳簿が2本ずつあるのか</h2>
+        <p style="margin:0 0 10px">シグナルで建てる帳簿（live / early）と、<b>同じ候補から無作為に建てる対照群</b>
+        （control / early_ctrl）を同時に回しています。単独の成績は誤検出を生むので、
+        <b>「シグナル − 対照群」の差が統計的に有意かどうか</b>でのみ判断します。</p>
+        <h2>2つの仮説</h2>
+        <p style="margin:0 0 10px"><b>v1</b>: 生後30分〜24時間の銘柄で、値動きが加速している最中を買う。<br>
+        <b>v1e</b>: 生後15〜30分で、流動性がまだ積み上がっている銘柄を買う（価格は条件にしない）。<br>
+        決済はどちらも同一（+35%利確 / +25%到達後は高値-15%トレール / -18%損切 / 6時間で時間切れ /
+        流動性の消失で撤退）。</p>
+        <h2>数字の読み方</h2>
+        <p style="margin:0 0 10px">各帳簿は<b>1回$200固定・複利なし</b>で建て続けます。仮説検定が目的なので
+        資金制約を掛けていません（残高で試行が止まると標本が偏るため）。表示しているのは口座残高ではなく
+        <b>累計損益</b>です。</p>
+        <h2>コスト</h2>
+        <p style="margin:0 0 10px">損益はLP手数料25bps・価格インパクト・MEV想定50bps・優先手数料$0.15を
+        引いた後の値です。$5万の池に$200なら往復約3.2%。</p>
+        <h2>実弾に移す条件（未達）</h2>
+        <p style="margin:0">決済30件以上 かつ シグナル−対照群の差が p&lt;0.05 でプラス、
+        かつ標本が複数週にまたがること。満たすまで資金は入れません。</p>
+      </div>
+    </div>
+  </main>
+  <footer id="foot"></footer>
+</div>
+<div class="tt" id="tt"></div>
+
+<script>
+const PAIR_LABEL = {v1:"v1", v1e:"v1e"};
+const yen = n => (n<0?"-":"+") + "$" + Math.abs(n).toFixed(2);
+const pct = n => (n>=0?"+":"") + n.toFixed(2) + "%";
+const cls = n => n > 0 ? "pos" : (n < 0 ? "neg" : "");
+const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const tt = document.getElementById("tt");
+let STATE = null;
+
+function tile(label, value, note, valueClass){
+  return `<div class="tile"><div class="label">${label}</div>
+          <div class="value ${valueClass||""}">${value}</div>
+          <div class="note">${note||""}</div></div>`;
+}
+
+function lineChart(el, series, base){
+  if(!el) return;
+  const W = 900, H = 240, P = {t:14, r:66, b:26, l:56};
+  const pts = [].concat(...series.map(s => s.data));
+  if (pts.length < 2 || Math.max(...series.map(s => s.data.length)) < 2){
+    el.innerHTML = '<div class="empty">推移を描くにはあと数巡回ぶんの記録が必要です</div>'; return; }
+  const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const padY = (y1-y0)*0.15 || 10; y0 -= padY; y1 += padY;
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const X = v => P.l + (v-x0)/((x1-x0)||1)*(W-P.l-P.r);
+  const Y = v => P.t + (1-(v-y0)/((y1-y0)||1))*(H-P.t-P.b);
+  const gy = []; for(let i=0;i<=4;i++) gy.push(y0 + (y1-y0)*i/4);
+  const ft = ms => new Date(ms).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="資産推移">`;
+  gy.forEach(v => { svg += `<line x1="${P.l}" x2="${W-P.r}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"
+      stroke="var(--grid)" stroke-width="1"/><text x="${P.l-8}" y="${(Y(v)+4).toFixed(1)}"
+      text-anchor="end" font-size="11" fill="var(--text-secondary)">$${v.toFixed(0)}</text>`; });
+  svg += `<line x1="${P.l}" x2="${W-P.r}" y1="${Y(base)}" y2="${Y(base)}" stroke="var(--axis)"
+          stroke-width="1" stroke-dasharray="3 3"/>`;
+  [x0,(x0+x1)/2,x1].forEach(v => { svg += `<text x="${X(v).toFixed(1)}" y="${H-6}" text-anchor="middle"
+      font-size="11" fill="var(--text-secondary)">${ft(v)}</text>`; });
+  series.forEach(s => {
+    if(!s.data.length) return;
+    const d = s.data.map((p,i)=>`${i?"L":"M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
+    const last = s.data[s.data.length-1];
+    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="4.5" fill="${s.color}"
+            stroke="var(--surface-1)" stroke-width="2"/>
+            <text x="${(X(last[0])+9).toFixed(1)}" y="${(Y(last[1])+4).toFixed(1)}" font-size="11"
+            fill="var(--text-secondary)">${s.name}</text>`;
+  });
+  svg += `<line id="cross" x1="0" x2="0" y1="${P.t}" y2="${H-P.b}" stroke="var(--axis)" stroke-width="1" opacity="0"/></svg>`;
+  el.innerHTML = svg;
+  const svgEl = el.querySelector("svg"), cross = el.querySelector("#cross");
+  const move = ev => {
+    const touch = ev.touches ? ev.touches[0] : ev;
+    const r = svgEl.getBoundingClientRect();
+    const vx = (touch.clientX - r.left) / r.width * W;
+    if (vx < P.l || vx > W-P.r){ cross.setAttribute("opacity","0"); tt.style.opacity=0; return; }
+    const t = x0 + (vx-P.l)/(W-P.l-P.r)*(x1-x0);
+    cross.setAttribute("x1", vx); cross.setAttribute("x2", vx); cross.setAttribute("opacity","1");
+    let html = `<b>${new Date(t).toLocaleString("ja-JP",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</b>`;
+    series.forEach(s => {
+      if(!s.data.length) return;
+      let best = s.data[0];
+      for(const p of s.data) if (Math.abs(p[0]-t) < Math.abs(best[0]-t)) best = p;
+      const d = 100*(best[1]/base - 1);
+      html += `<div><span class="swatch" style="background:${s.color}"></span>${s.name}
+               $${best[1].toFixed(2)} <span class="${cls(d)}">${pct(d)}</span></div>`;
+    });
+    tt.innerHTML = html; tt.style.opacity = 1;
+    tt.style.left = Math.min(touch.clientX + 14, window.innerWidth - 200) + "px";
+    tt.style.top = Math.min(touch.clientY + 14, window.innerHeight - 110) + "px";
+  };
+  svgEl.addEventListener("mousemove", move);
+  svgEl.addEventListener("touchmove", move, {passive:true});
+  const hide = () => { cross.setAttribute("opacity","0"); tt.style.opacity = 0; };
+  svgEl.addEventListener("mouseleave", hide);
+  svgEl.addEventListener("touchend", hide);
+}
+
+function flowChart(el, recent){
+  if(!el) return;
+  if (recent.length < 2){ el.innerHTML = '<div class="empty">記録が貯まると表示されます</div>'; return; }
+  const W = 880, H = 160, P = {t:10, r:10, b:22, l:30};
+  const maxV = Math.max(3, ...recent.map(r => r.universe));
+  const bw = Math.max(3, (W-P.l-P.r)/recent.length - 3);
+  const Y = v => P.t + (1 - v/maxV) * (H-P.t-P.b);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="巡回ごとの候補数とシグナル数">`;
+  [0, maxV/2, maxV].forEach(v => { svg += `<line x1="${P.l}" x2="${W-P.r}" y1="${Y(v).toFixed(1)}"
+      y2="${Y(v).toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>
+      <text x="${P.l-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end" font-size="10"
+      fill="var(--text-secondary)">${v.toFixed(0)}</text>`; });
+  recent.forEach((r,i) => {
+    const x = P.l + i*((W-P.l-P.r)/recent.length);
+    svg += `<rect x="${x.toFixed(1)}" y="${Y(r.universe).toFixed(1)}" width="${bw.toFixed(1)}"
+            height="${(H-P.b-Y(r.universe)).toFixed(1)}" rx="3" fill="var(--axis)"/>`;
+    if (r.signal > 0) svg += `<rect x="${x.toFixed(1)}" y="${Y(r.signal).toFixed(1)}" width="${bw.toFixed(1)}"
+            height="${(H-P.b-Y(r.signal)).toFixed(1)}" rx="3" fill="var(--live)"
+            stroke="var(--surface-1)" stroke-width="2"/>`;
+  });
+  const f = ms => new Date(ms).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+  svg += `<text x="${P.l}" y="${H-5}" font-size="10" fill="var(--text-secondary)">${f(recent[0].ts)}</text>
+          <text x="${W-P.r}" y="${H-5}" text-anchor="end" font-size="10"
+          fill="var(--text-secondary)">${f(recent[recent.length-1].ts)}</text></svg>`;
+  el.innerHTML = svg;
+}
+
+function renderOverview(s){
+  const html = s.pairs.map(p => {
+    const A = s.books[p.book], B = s.books[p.ctrl], v = p.verdict;
+    const ap = 100*(A.equity/s.start_equity-1), bp = 100*(B.equity/s.start_equity-1);
+    const sub = v.p == null
+      ? "判定には両帳簿5件以上の決済が必要です"
+      : `${p.book} − ${p.ctrl} = <b class="${cls(v.diff)}">${pct(v.diff)}</b> / 回　Welch t=${v.t.toFixed(2)}, p=${v.p.toFixed(4)}`;
+    return `<div class="card banner ${v.state}">
+        <div class="headline">${esc(p.label)}</div>
+        <div class="sub">${esc(v.text)}</div>
+        <div class="sub">${sub}</div>
+      </div>
+      <div class="card">
+        <div class="tiles">
+          ${tile(`<span class="swatch" style="background:var(--${p.book})"></span>${p.book} 累計損益`,
+                 yen(A.equity - s.start_equity),
+                 `1回$${s.position_usd.toFixed(0)}固定 ・ 決済${A.n_closed}件 ・ 勝率${A.win_rate.toFixed(0)}%`,
+                 cls(A.equity - s.start_equity))}
+          ${tile(`<span class="swatch" style="background:var(--${p.ctrl})"></span>${p.ctrl}（対照群）`,
+                 yen(B.equity - s.start_equity),
+                 `1回$${s.position_usd.toFixed(0)}固定 ・ 決済${B.n_closed}件 ・ 勝率${B.win_rate.toFixed(0)}%`,
+                 cls(B.equity - s.start_equity))}
+          ${tile("1回あたり平均", A.n_closed ? pct(A.mean_ret) : "—",
+                 `n=${A.n_closed} ・ 対照群 ${B.n_closed ? pct(B.mean_ret) : "—"}`, cls(A.mean_ret))}
+          ${tile("判定までの残り", v.need > 0 ? v.need+"件" : "条件到達", `決済${A.n_closed}/30件`)}
+        </div>
+        <div class="legend">
+          <span><span class="swatch" style="background:var(--${p.book})"></span>${p.book}</span>
+          <span><span class="swatch" style="background:var(--${p.ctrl})"></span>${p.ctrl}（無作為）</span>
+        </div>
+        <div id="chart-${p.key}"></div>
+      </div>`;
+  }).join("");
+  document.getElementById("tab-overview").innerHTML = html;
+  s.pairs.forEach(p => lineChart(document.getElementById("chart-"+p.key),
+    [{name:p.book, color:`var(--${p.book})`, data:(s.curve[p.book]||[]).map(x=>[x[0], x[1]-s.start_equity])},
+     {name:p.ctrl, color:`var(--${p.ctrl})`, data:(s.curve[p.ctrl]||[]).map(x=>[x[0], x[1]-s.start_equity])}], 0));
+}
+
+function renderPositions(s){
+  document.getElementById("tab-positions").innerHTML = `<div class="card">
+    <h2>建玉中 ${s.open.length}件</h2>
+    ${s.open.length ? `<div class="scroll"><table>
+      <thead><tr><th>銘柄</th><th>帳簿</th><th>経過</th><th>値動き</th><th>含み損益</th><th>高値から</th><th>流動性</th></tr></thead>
+      <tbody>${s.open.map(o=>`<tr>
+        <td class="name"><span class="book ${o.book}"></span>${esc(o.name)}</td>
+        <td>${esc(o.book)}</td><td>${o.held_min.toFixed(0)}分</td>
+        <td class="${cls(o.move_pct)}">${pct(o.move_pct)}</td>
+        <td class="${cls(o.unreal_pct)}">${pct(o.unreal_pct)}</td>
+        <td>${o.from_peak_pct.toFixed(1)}%</td>
+        <td>$${Math.round(o.reserve).toLocaleString()}</td></tr>`).join("")}</tbody></table></div>`
+      : '<div class="empty">建玉なし</div>'}</div>`;
+}
+
+function renderHistory(s){
+  const rows = s.trades;
+  document.getElementById("tab-history").innerHTML = `<div class="card">
+    <h2>決済履歴 ${rows.length}件（新しい順）</h2>
+    ${rows.length ? `<div class="scroll"><table>
+      <thead><tr><th>銘柄</th><th>帳簿</th><th>決済</th><th>保有</th><th>損益</th><th>理由</th></tr></thead>
+      <tbody>${rows.map(t=>`<tr>
+        <td class="name"><span class="book ${t.book}"></span>${esc(t.name)}</td>
+        <td>${esc(t.book)}</td><td>${esc(t.closed)}</td><td>${t.hold.toFixed(0)}分</td>
+        <td class="${cls(t.ret)}">${pct(t.ret)} <span style="color:var(--text-muted)">${yen(t.pnl)}</span></td>
+        <td><span class="badge">${esc(t.reason)}</span></td></tr>`).join("")}</tbody></table></div>`
+      : '<div class="empty">まだ決済はありません</div>'}</div>`;
+}
+
+function renderCollect(s){
+  const maxR = Math.max(1, ...s.rejects.map(r=>r.n));
+  document.getElementById("tab-collect").innerHTML = `
+    <div class="card">
+      <h2>収集の規模</h2>
+      <div class="tiles">
+        ${tile("巡回", s.cycles.toLocaleString()+"回", `${s.hours.toFixed(1)}時間ぶん`)}
+        ${tile("追跡したプール", s.pools.toLocaleString(), "前向きに記録した銘柄数")}
+        ${tile("スナップショット", s.snapshots.toLocaleString()+"件", "5分ごとの記録")}
+      </div>
+    </div>
+    <div class="card">
+      <h2>候補とシグナルの推移（直近48巡回）</h2>
+      <div class="legend"><span><span class="swatch" style="background:var(--axis)"></span>ユニバース通過</span>
+      <span><span class="swatch" style="background:var(--live)"></span>シグナル発生</span></div>
+      <div id="flow"></div>
+    </div>
+    <div class="card">
+      <h2>除外理由の累計</h2>
+      <div class="bars">${s.rejects.map(r=>`
+        <span style="color:var(--text-secondary)">${esc(r.reason)}</span>
+        <span class="bar" style="width:${(100*r.n/maxR).toFixed(1)}%;background:${
+          r.reason.startsWith("early:") ? "var(--early)" :
+          (r.reason.startsWith("entry:") ? "var(--live)" : "var(--axis)")}"></span>
+        <span>${r.n.toLocaleString()}</span>`).join("")}</div>
+    </div>`;
+  flowChart(document.getElementById("flow"), s.recent);
+}
+
+function render(s){
+  STATE = s;
+  const age = (Date.now() - s.generated_at) / 60000;
+  document.getElementById("updated").innerHTML =
+    `<span class="dot ${age > 15 ? "stale" : ""}"></span>` +
+    `${new Date(s.generated_at).toLocaleString("ja-JP",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})} 更新`;
+  renderOverview(s); renderPositions(s); renderHistory(s); renderCollect(s);
+  document.getElementById("foot").innerHTML =
+    `実資金は動いていません（このbotは鍵を持たず、発注機能は未実装です）。` +
+    `損益はLP手数料・価格インパクト・MEV想定・優先手数料を引いた後の値です。<br>` +
+    `データは5分ごとに更新され、このページは60秒ごとに取得し直します。`;
+}
+
+document.getElementById("tabs").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-tab]");
+  if(!b) return;
+  document.querySelectorAll("#tabs button").forEach(x => x.setAttribute("aria-selected", String(x===b)));
+  ["overview","positions","history","collect","about"].forEach(t =>
+    document.getElementById("tab-"+t).hidden = (t !== b.dataset.tab));
+});
+
+(function(){
+  const root = document.documentElement;
+  let saved = null; try{ saved = localStorage.getItem("memelab-theme"); }catch(e){}
+  if (saved === "light" || saved === "dark") root.dataset.theme = saved;
+  document.getElementById("theme").addEventListener("click", () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark"
+                                    : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try{ localStorage.setItem("memelab-theme", root.dataset.theme); }catch(e){}
+  });
+})();
+
+async function tick(){
+  try{
+    const r = await fetch("./state.json?t=" + Date.now(), {cache:"no-store"});
+    render(await r.json());
+  }catch(e){
+    document.getElementById("updated").textContent = "データを取得できません";
+  }
+}
+tick(); setInterval(tick, 60000);
+</script>
+</body>
+</html>
